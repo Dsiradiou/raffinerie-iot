@@ -3,37 +3,15 @@ from datetime import datetime, timezone
 import paho.mqtt.client as mqtt
 
 # ============================================================
-# PARAMÈTRES DES CAPTEURS
+# CHARGEMENT DE LA CONFIGURATION
 # ============================================================
 
-# Température (pipe-101)
-# Une pipeline de raffinerie tourne normalement autour de 80°C
-TEMP_MOYENNE   = 80.0   # valeur nominale (°C)
-TEMP_THETA     = 0.08   # vitesse de retour vers la moyenne (0=aucun retour, 1=retour immédiat)
-TEMP_SIGMA     = 0.6    # niveau de bruit (plus grand = plus agité)
-TEMP_CYCLE_AMP = 3.0    # amplitude du cycle thermique (°C)
-TEMP_CYCLE_PER = 600    # période du cycle (secondes) → 1 cycle toutes les 10 min
+CONFIG_PATH = "config.json"
 
-# Vibration (pump-303)
-# Une pompe industrielle normale vibre entre 0.5 et 1.5 mm/s
-VIB_MOYENNE   = 1.0
-VIB_THETA     = 0.1
-VIB_SIGMA     = 0.05
-VIB_CYCLE_AMP = 0.2
-VIB_CYCLE_PER = 300     # 1 cycle toutes les 5 min (cycle de la pompe)
-
-# Machine à états
-PROB_ANOMALIE      = 0.002  # ~0.2% de chance par mesure de déclencher une anomalie
-PROB_RECUPERATION  = 0.01   # ~1% de chance de commencer la récupération
-
-# ============================================================
-# ÉTAT INITIAL
-# ============================================================
-temp       = TEMP_MOYENNE
-vib        = VIB_MOYENNE
-etat_temp  = "NORMAL"   # états possibles : NORMAL, ANOMALIE, RECUPERATION
-etat_vib   = "NORMAL"
-t          = 0           # compteur de temps en secondes
+def charger_config():
+    """Lit config.json et retourne le contenu."""
+    with open(CONFIG_PATH, "r") as f:
+        return json.load(f)
 
 # ============================================================
 # CONNEXION MQTT
@@ -47,95 +25,117 @@ client.connect("localhost", 1883, 60)
 
 def ornstein_uhlenbeck(valeur, moyenne, theta, sigma):
     """
-    Processus de retour vers la moyenne (modèle OU).
-    Chaque nouvelle valeur = valeur précédente
-                           + force de rappel vers la moyenne
-                           + petit bruit gaussien
-    Cela produit des courbes lisses et continues comme de vrais capteurs.
+    Processus de retour vers la moyenne.
+    Produit des courbes lisses et continues comme de vrais capteurs.
     """
     bruit = random.gauss(0, 1)
     return valeur + theta * (moyenne - valeur) + sigma * bruit
 
 def cycle_sinusoidal(amplitude, periode, t):
     """
-    Composante cyclique lente simulant les cycles thermiques
-    ou les cycles de charge de la pompe.
+    Composante cyclique lente simulant les cycles
+    thermiques ou de charge de la pompe.
     """
     return amplitude * math.sin(2 * math.pi * t / periode)
+
+# ============================================================
+# ÉTAT INITIAL
+# ============================================================
+# Dictionnaire qui garde l'état de chaque capteur en mémoire
+# clé = machine_id, valeur = dict avec valeur courante et état
+etats_capteurs = {}
+
+PROB_ANOMALIE     = 0.002
+PROB_RECUPERATION = 0.01
+
+t = 0  # compteur de temps en secondes
+dernier_rechargement = 0  # pour savoir quand recharger la config
 
 # ============================================================
 # BOUCLE PRINCIPALE
 # ============================================================
 while True:
     now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    t += 2  # on avance de 2 secondes à chaque itération
+    t  += 2
 
-    # --- Machine à états : TEMPÉRATURE ---
-    if etat_temp == "NORMAL":
-        if random.random() < PROB_ANOMALIE:
-            etat_temp = "ANOMALIE"
-            print("⚠️  ANOMALIE TEMPÉRATURE — surchauffe détectée !")
-        cible_temp = TEMP_MOYENNE
+    # --- Rechargement de la config toutes les 10 secondes ---
+    if t - dernier_rechargement >= 10:
+        config = charger_config()
+        dernier_rechargement = t
+        print("🔄 Configuration rechargée")
 
-    elif etat_temp == "ANOMALIE":
-        cible_temp = 120.0  # la température dérive progressivement vers 120°C
-        if random.random() < PROB_RECUPERATION:
-            etat_temp = "RECUPERATION"
-            print("🔧 RÉCUPÉRATION TEMPÉRATURE en cours...")
+    seuils  = config["seuils"]
+    capteurs = config["capteurs"]
 
-    else:  # RECUPERATION
-        cible_temp = TEMP_MOYENNE
-        if abs(temp - TEMP_MOYENNE) < 2.0:
-            etat_temp = "NORMAL"
-            print("✅ TEMPÉRATURE revenue à la normale")
+    # --- Boucle sur chaque capteur défini dans config.json ---
+    for capteur in capteurs:
+        machine_id    = capteur["machine_id"]
+        type_capteur  = capteur["type_capteur"]
+        valeur_nom    = capteur["valeur_nominale"]
+        theta         = capteur["theta"]
+        sigma         = capteur["sigma"]
 
-    # --- Machine à états : VIBRATION ---
-    if etat_vib == "NORMAL":
-        if random.random() < PROB_ANOMALIE:
-            etat_vib = "ANOMALIE"
-            print("⚠️  ANOMALIE VIBRATION — usure détectée !")
-        cible_vib = VIB_MOYENNE
+        # Initialiser l'état du capteur s'il est nouveau
+        if machine_id not in etats_capteurs:
+            etats_capteurs[machine_id] = {
+                "valeur": valeur_nom,
+                "etat"  : "NORMAL"
+            }
 
-    elif etat_vib == "ANOMALIE":
-        cible_vib = 3.5  # vibration dérive vers 3.5 mm/s (roulement usé)
-        if random.random() < PROB_RECUPERATION:
-            etat_vib = "RECUPERATION"
-            print("🔧 RÉCUPÉRATION VIBRATION en cours...")
+        etat_actuel = etats_capteurs[machine_id]
+        valeur      = etat_actuel["valeur"]
+        etat        = etat_actuel["etat"]
 
-    else:  # RECUPERATION
-        cible_vib = VIB_MOYENNE
-        if abs(vib - VIB_MOYENNE) < 0.1:
-            etat_vib = "NORMAL"
-            print("✅ VIBRATION revenue à la normale")
+        # --- Seuil d'anomalie selon le type de capteur ---
+        if type_capteur == "temperature":
+            seuil_anomalie = seuils["temperature_max"]
+            cycle_amp      = 3.0
+            cycle_per      = 600
+        else:  # vibration
+            seuil_anomalie = seuils["vibration_max"]
+            cycle_amp      = 0.2
+            cycle_per      = 300
 
-    # --- Calcul des nouvelles valeurs ---
-    temp = ornstein_uhlenbeck(temp, cible_temp, TEMP_THETA, TEMP_SIGMA)
-    temp += cycle_sinusoidal(TEMP_CYCLE_AMP, TEMP_CYCLE_PER, t)
-    temp  = round(max(30.0, min(150.0, temp)), 2)  # on reste dans les limites physiques
+        # --- Machine à états ---
+        if etat == "NORMAL":
+            if random.random() < PROB_ANOMALIE:
+                etat = "ANOMALIE"
+                print(f"⚠️  ANOMALIE {type_capteur.upper()} sur {machine_id} !")
+            cible = valeur_nom
 
-    vib = ornstein_uhlenbeck(vib, cible_vib, VIB_THETA, VIB_SIGMA)
-    vib += cycle_sinusoidal(VIB_CYCLE_AMP, VIB_CYCLE_PER, t)
-    vib  = round(max(0.0, min(5.0, vib)), 2)
+        elif etat == "ANOMALIE":
+            cible = seuil_anomalie * 0.95  # dérive vers 95% du seuil
+            if random.random() < PROB_RECUPERATION:
+                etat = "RECUPERATION"
+                print(f"🔧 RÉCUPÉRATION {type_capteur.upper()} sur {machine_id}...")
 
-    # --- Publication MQTT ---
-    msg_temp = json.dumps({
-        "machine_id"   : "pipe-101",
-        "valeur"       : temp,
-        "timestamp"    : now,
-        "type_capteur" : "temperature",
-        "etat"         : etat_temp
-    })
+        else:  # RECUPERATION
+            cible = valeur_nom
+            if abs(valeur - valeur_nom) < (0.1 if type_capteur == "vibration" else 2.0):
+                etat = "NORMAL"
+                print(f"✅ {type_capteur.upper()} {machine_id} revenue à la normale")
 
-    msg_vib = json.dumps({
-        "machine_id"   : "pump-303",
-        "valeur"       : vib,
-        "timestamp"    : now,
-        "type_capteur" : "vibration",
-        "etat"         : etat_vib
-    })
+        # --- Calcul de la nouvelle valeur ---
+        valeur  = ornstein_uhlenbeck(valeur, cible, theta, sigma)
+        valeur += cycle_sinusoidal(cycle_amp, cycle_per, t)
+        valeur  = round(max(0.0, valeur), 2)
 
-    client.publish("raffinerie/temp", msg_temp)
-    client.publish("raffinerie/vib", msg_vib)
+        # --- Sauvegarder l'état mis à jour ---
+        etats_capteurs[machine_id] = {"valeur": valeur, "etat": etat}
 
-    print(f"[{now}] Temp: {temp}°C ({etat_temp}) | Vib: {vib} mm/s ({etat_vib})")
+        # --- Déterminer le topic MQTT selon le type ---
+        topic = "raffinerie/temp" if type_capteur == "temperature" else "raffinerie/vib"
+
+        # --- Publication MQTT ---
+        message = json.dumps({
+            "machine_id"   : machine_id,
+            "valeur"       : valeur,
+            "timestamp"    : now,
+            "type_capteur" : type_capteur,
+            "etat"         : etat
+        })
+
+        client.publish(topic, message)
+        print(f"[{now}] {machine_id} | {type_capteur}: {valeur} ({etat})")
+
     time.sleep(2)
