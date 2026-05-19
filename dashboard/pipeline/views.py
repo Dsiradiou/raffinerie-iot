@@ -110,11 +110,30 @@ def config_capteurs(request):
     """Met à jour la liste des capteurs dans config.json."""
     if request.method == 'POST':
         try:
-            data    = json.loads(request.body)
-            config  = lire_config()
-            config["capteurs"] = data["capteurs"]
+            data   = json.loads(request.body)
+            config = lire_config()
+            action = data.get('action', 'remplacer')
+
+            if action == 'ajouter':
+                # Vérifie que le machine_id n'existe pas déjà
+                ids_existants = [c["machine_id"] for c in config["capteurs"]]
+                if data["capteur"]["machine_id"] in ids_existants:
+                    return JsonResponse({'status': 'error',
+                                        'message': 'Ce machine_id existe déjà'})
+                config["capteurs"].append(data["capteur"])
+
+            elif action == 'modifier':
+                for c in config["capteurs"]:
+                    if c["machine_id"] == data["capteur"]["machine_id"]:
+                        c.update(data["capteur"])
+                        break
+
+            else:  # remplacer — comportement original
+                config["capteurs"] = data["capteurs"]
+
             ecrire_config(config)
             return JsonResponse({'status': 'ok', 'message': 'Capteurs mis à jour'})
+
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -128,5 +147,29 @@ def config_seuils(request):
             config["seuils"].update(data)
             ecrire_config(config)
             return JsonResponse({'status': 'ok', 'message': 'Seuils mis à jour'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+
+def capteurs(request):
+    """Page de gestion des capteurs."""
+    config = lire_config()
+    return render(request, 'pipeline/capteurs.html', {
+        'capteurs': config["capteurs"]
+    })
+
+@csrf_exempt
+def supprimer_capteur(request):
+    """Supprime un capteur par son machine_id."""
+    if request.method == 'POST':
+        try:
+            data       = json.loads(request.body)
+            machine_id = data["machine_id"]
+            config     = lire_config()
+            config["capteurs"] = [
+                c for c in config["capteurs"]
+                if c["machine_id"] != machine_id
+            ]
+            ecrire_config(config)
+            return JsonResponse({'status': 'ok', 'message': f'{machine_id} supprimé'})
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)})

@@ -8,4 +8,6 @@ urlpatterns = [
     path('pipeline/status/',    views.pipeline_status,  name='pipeline_status'),
     path('config/capteurs/',    views.config_capteurs,  name='config_capteurs'),
     path('config/seuils/',      views.config_seuils,    name='config_seuils'),
+    path('capteurs/',           views.capteurs,           name='capteurs'),
+    path('capteurs/supprimer/', views.supprimer_capteur,  name='supprimer_capteur'),
 ]

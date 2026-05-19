@@ -1,0 +1,270 @@
+{% extends "pipeline/base.html" %}
+
+{% block title %}Capteurs — Raffinerie IoT{% endblock %}
+
+{% block contenu %}
+
+<div class="page-header">
+    <h1>📡 Capteurs simulés</h1>
+    <p>Gérez les capteurs de la pipeline — les modifications sont appliquées en moins de 10 secondes</p>
+</div>
+
+<div class="grid-2">
+
+    <!-- ================================================
+         FORMULAIRE AJOUT NOUVEAU CAPTEUR
+    ================================================ -->
+    <div class="card">
+        <h2>Ajouter un capteur</h2>
+
+        <div class="form-group">
+            <label>Identifiant machine (machine_id)</label>
+            <input type="text" id="new-machine-id" placeholder="ex: pompe-202">
+        </div>
+
+        <div class="form-group">
+            <label>Type de capteur</label>
+            <select id="new-type">
+                <option value="temperature">Température</option>
+                <option value="vibration">Vibration</option>
+                <option value="pression">Pression</option>
+                <option value="debit">Débit</option>
+                <option value="niveau">Niveau</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Unité</label>
+            <input type="text" id="new-unite" placeholder="ex: bar, °C, mm/s, m³/h">
+        </div>
+
+        <div class="form-group">
+            <label>Valeur nominale (régime normal)</label>
+            <input type="number" id="new-nominale" placeholder="ex: 5.0" step="0.1">
+        </div>
+
+        <div class="form-group">
+            <label>Valeur minimale physique</label>
+            <input type="number" id="new-min" placeholder="ex: 0.0" step="0.1">
+        </div>
+
+        <div class="form-group">
+            <label>Valeur maximale physique</label>
+            <input type="number" id="new-max" placeholder="ex: 10.0" step="0.1">
+        </div>
+
+        <div class="form-group">
+            <label>Seuil alerte bas</label>
+            <input type="number" id="new-seuil-bas" placeholder="ex: 2.0" step="0.1">
+        </div>
+
+        <div class="form-group">
+            <label>Seuil alerte haut</label>
+            <input type="number" id="new-seuil-haut" placeholder="ex: 8.0" step="0.1">
+        </div>
+
+        <!-- Paramètres avancés repliables -->
+        <details style="margin-bottom:15px;">
+            <summary style="cursor:pointer; color:#448aff; font-size:0.9rem;">
+                ⚙️ Paramètres avancés (simulation)
+            </summary>
+            <div style="margin-top:12px;">
+                <div class="form-group">
+                    <label>Theta — inertie (0.01=lent, 0.2=rapide)</label>
+                    <input type="number" id="new-theta" value="0.05" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Sigma — niveau de bruit</label>
+                    <input type="number" id="new-sigma" value="0.1" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Amplitude cycle</label>
+                    <input type="number" id="new-cycle-amp" value="0.2" step="0.05">
+                </div>
+                <div class="form-group">
+                    <label>Période cycle (secondes)</label>
+                    <input type="number" id="new-cycle-per" value="600" step="60">
+                </div>
+            </div>
+        </details>
+
+        <button class="btn btn-save" onclick="ajouterCapteur()">
+            ➕ Ajouter le capteur
+        </button>
+
+        <div class="message" id="msg-ajout"></div>
+    </div>
+
+    <!-- ================================================
+         LISTE DES CAPTEURS EXISTANTS
+    ================================================ -->
+    <div class="card">
+        <h2>Capteurs actifs ({{ capteurs|length }})</h2>
+
+        {% for capteur in capteurs %}
+        <div class="capteur-bloc" id="bloc-{{ capteur.machine_id }}">
+
+            <!-- En-tête du capteur -->
+            <div style="display:flex; justify-content:space-between;
+                        align-items:center; margin-bottom:10px;">
+                <div>
+                    <span style="font-weight:700; color:#ffffff;">
+                        {{ capteur.machine_id }}
+                    </span>
+                    <span class="badge badge-ok" style="margin-left:8px;">
+                        {{ capteur.type_capteur }}
+                    </span>
+                    <span style="color:#a0a0b0; font-size:0.8rem; margin-left:6px;">
+                        {{ capteur.unite }}
+                    </span>
+                </div>
+                <button class="btn btn-danger"
+                        style="padding:5px 12px; font-size:0.8rem;"
+                        onclick="supprimerCapteur('{{ capteur.machine_id }}')">
+                    🗑️
+                </button>
+            </div>
+
+            <!-- Paramètres modifiables -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;
+                        background:#0f1117; padding:12px; border-radius:8px;
+                        margin-bottom:8px;">
+                <div>
+                    <label>Valeur nominale</label>
+                    <input type="number"
+                           class="cap-nominale"
+                           data-id="{{ capteur.machine_id }}"
+                           value="{{ capteur.valeur_nominale }}"
+                           step="0.1">
+                </div>
+                <div>
+                    <label>Seuil haut</label>
+                    <input type="number"
+                           class="cap-seuil-haut"
+                           data-id="{{ capteur.machine_id }}"
+                           value="{{ capteur.seuil_alerte_haut }}"
+                           step="0.1">
+                </div>
+                <div>
+                    <label>Seuil bas</label>
+                    <input type="number"
+                           class="cap-seuil-bas"
+                           data-id="{{ capteur.machine_id }}"
+                           value="{{ capteur.seuil_alerte_bas }}"
+                           step="0.1">
+                </div>
+                <div>
+                    <label>Sigma (bruit)</label>
+                    <input type="number"
+                           class="cap-sigma"
+                           data-id="{{ capteur.machine_id }}"
+                           value="{{ capteur.sigma }}"
+                           step="0.01">
+                </div>
+            </div>
+
+            <button class="btn btn-save"
+                    style="width:100%; padding:8px;"
+                    onclick="sauvegarderCapteur('{{ capteur.machine_id }}')">
+                💾 Sauvegarder
+            </button>
+
+            <div class="message" id="msg-{{ capteur.machine_id }}"></div>
+
+            <hr style="border-color:#2a2d3e; margin:15px 0;">
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+    // ================================================
+    // AJOUTER UN CAPTEUR
+    // ================================================
+    function ajouterCapteur() {
+        const machine_id = document.getElementById('new-machine-id').value.trim();
+        const type       = document.getElementById('new-type').value;
+
+        if (!machine_id) {
+            afficherMessage('msg-ajout', 'Veuillez entrer un identifiant machine', false);
+            return;
+        }
+
+        const nouveau = {
+            machine_id      : machine_id,
+            type_capteur    : type,
+            unite           : document.getElementById('new-unite').value || type,
+            valeur_nominale : parseFloat(document.getElementById('new-nominale').value) || 1.0,
+            valeur_min      : parseFloat(document.getElementById('new-min').value) || 0.0,
+            valeur_max      : parseFloat(document.getElementById('new-max').value) || 10.0,
+            seuil_alerte_bas: parseFloat(document.getElementById('new-seuil-bas').value) || 0.0,
+            seuil_alerte_haut:parseFloat(document.getElementById('new-seuil-haut').value) || 8.0,
+            theta           : parseFloat(document.getElementById('new-theta').value) || 0.05,
+            sigma           : parseFloat(document.getElementById('new-sigma').value) || 0.1,
+            cycle_amplitude : parseFloat(document.getElementById('new-cycle-amp').value) || 0.2,
+            cycle_periode   : parseFloat(document.getElementById('new-cycle-per').value) || 600,
+        };
+
+        // On récupère d'abord la liste actuelle puis on ajoute
+        fetch('/config/capteurs/', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify({ action: 'ajouter', capteur: nouveau })
+        })
+        .then(r => r.json())
+        .then(data => {
+            afficherMessage('msg-ajout', data.message, data.status === 'ok');
+            if (data.status === 'ok') setTimeout(() => location.reload(), 1500);
+        });
+    }
+
+    // ================================================
+    // SAUVEGARDER UN CAPTEUR EXISTANT
+    // ================================================
+    function sauvegarderCapteur(machine_id) {
+        const bloc = document.getElementById('bloc-' + machine_id);
+
+        const modifs = {
+            machine_id       : machine_id,
+            valeur_nominale  : parseFloat(bloc.querySelector('.cap-nominale').value),
+            seuil_alerte_haut: parseFloat(bloc.querySelector('.cap-seuil-haut').value),
+            seuil_alerte_bas : parseFloat(bloc.querySelector('.cap-seuil-bas').value),
+            sigma            : parseFloat(bloc.querySelector('.cap-sigma').value),
+        };
+
+        fetch('/config/capteurs/', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify({ action: 'modifier', capteur: modifs })
+        })
+        .then(r => r.json())
+        .then(data => afficherMessage('msg-' + machine_id, data.message, data.status === 'ok'));
+    }
+
+    // ================================================
+    // SUPPRIMER UN CAPTEUR
+    // ================================================
+    function supprimerCapteur(machine_id) {
+        if (!confirm(`Supprimer le capteur ${machine_id} ?`)) return;
+
+        fetch('/capteurs/supprimer/', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify({ machine_id })
+        })
+        .then(r => r.json())
+        .then(data => {
+            afficherMessage('msg-ajout', data.message, data.status === 'ok');
+            if (data.status === 'ok') {
+                document.getElementById('bloc-' + machine_id).remove();
+            }
+        });
+    }
+
+</script>
+{% endblock %}
