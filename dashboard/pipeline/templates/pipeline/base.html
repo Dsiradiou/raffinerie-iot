@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Le titre change selon la page grâce au bloc title -->
+    <title>{% block title %}Raffinerie IoT{% endblock %}</title>
+
+    <style>
+        /* ================================================
+           RESET ET BASE
+        ================================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #0f1117;
+            color: #e0e0e0;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ================================================
+           SIDEBAR — navigation latérale
+        ================================================ */
+        .sidebar {
+            width: 240px;
+            background: #1a1d2e;
+            border-right: 1px solid #2a2d3e;
+            padding: 25px 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-logo {
+            padding: 0 20px 25px 20px;
+            border-bottom: 1px solid #2a2d3e;
+            margin-bottom: 15px;
+        }
+
+        .sidebar-logo h1 {
+            font-size: 1rem;
+            color: #ffffff;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+
+        .sidebar-logo span {
+            font-size: 0.75rem;
+            color: #a0a0b0;
+        }
+
+        /* Liens de navigation */
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 20px;
+            color: #a0a0b0;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-link:hover {
+            background: #0f1117;
+            color: #ffffff;
+        }
+
+        /* Lien actif — page courante mise en évidence */
+        .nav-link.actif {
+            color: #448aff;
+            border-left-color: #448aff;
+            background: #0f1117;
+        }
+
+        .nav-link .icone {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Indicateur de statut pipeline en bas de la sidebar */
+        .sidebar-statut {
+            margin-top: auto;
+            padding: 15px 20px;
+            border-top: 1px solid #2a2d3e;
+            font-size: 0.8rem;
+            color: #a0a0b0;
+        }
+
+        .sidebar-statut .point {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .point.actif   { background: #00e676; }
+        .point.inactif { background: #ff5252; }
+
+        /* ================================================
+           CONTENU PRINCIPAL
+        ================================================ */
+        .main {
+            margin-left: 240px;
+            padding: 30px;
+            flex: 1;
+            width: calc(100% - 240px);
+        }
+
+        .page-header {
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #2a2d3e;
+        }
+
+        .page-header h1 {
+            font-size: 1.5rem;
+            color: #ffffff;
+        }
+
+        .page-header p {
+            color: #a0a0b0;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        /* ================================================
+           CARTES RÉUTILISABLES
+        ================================================ */
+        .card {
+            background: #1a1d2e;
+            border-radius: 10px;
+            padding: 25px;
+            border: 1px solid #2a2d3e;
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            font-size: 1rem;
+            color: #a0a0b0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        /* ================================================
+           FORMULAIRES RÉUTILISABLES
+        ================================================ */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            color: #a0a0b0;
+        }
+
+        input[type="number"],
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            background: #0f1117;
+            border: 1px solid #2a2d3e;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 0.95rem;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #448aff;
+        }
+
+        /* ================================================
+           BOUTONS RÉUTILISABLES
+        ================================================ */
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover    { opacity: 0.85; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .btn-start  { background: #00e676; color: #000; }
+        .btn-stop   { background: #ff5252; color: #fff; }
+        .btn-save   { background: #448aff; color: #fff; }
+        .btn-danger { background: #ff5252; color: #fff; }
+
+        /* ================================================
+           MESSAGES RETOUR
+        ================================================ */
+        .message {
+            margin-top: 12px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .message.succes { background: #1b3a2a; color: #00e676; border: 1px solid #00e676; }
+        .message.erreur { background: #3a1b1b; color: #ff5252; border: 1px solid #ff5252; }
+
+        /* ================================================
+           TABLEAUX
+        ================================================ */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px 15px;
+            color: #a0a0b0;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #2a2d3e;
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #1a1d2e;
+        }
+
+        tr:hover td { background: #1a1d2e; }
+
+        /* Badge de statut dans les tableaux */
+        .badge {
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-ok      { background: #1b3a2a; color: #00e676; }
+        .badge-alerte  { background: #3a2a1b; color: #ffab40; }
+        .badge-erreur  { background: #3a1b1b; color: #ff5252; }
+    </style>
+</head>
+
+<body>
+
+<!-- ================================================
+     SIDEBAR
+================================================ -->
+<nav class="sidebar">
+    <div class="sidebar-logo">
+        <h1>🏭 Raffinerie IoT</h1>
+        <span>Interface de contrôle</span>
+    </div>
+
+    <!-- request.resolver_match.url_name contient le nom
+         de l'URL active, ce qui permet d'ajouter la classe
+         "actif" sur le bon lien automatiquement -->
+    <a href="/"
+       class="nav-link {% if request.resolver_match.url_name == 'index' %}actif{% endif %}">
+        <span class="icone">🏠</span> Accueil
+    </a>
+
+    <a href="/capteurs/"
+       class="nav-link {% if request.resolver_match.url_name == 'capteurs' %}actif{% endif %}">
+        <span class="icone">📡</span> Capteurs
+    </a>
+
+    <a href="/alertes/"
+       class="nav-link {% if request.resolver_match.url_name == 'alertes' %}actif{% endif %}">
+        <span class="icone">🚨</span> Alertes
+    </a>
+
+    <a href="/infrastructure/"
+       class="nav-link {% if request.resolver_match.url_name == 'infrastructure' %}actif{% endif %}">
+        <span class="icone">🖥️</span> Infrastructure
+    </a>
+
+    <a href="/grafana/"
+       class="nav-link {% if request.resolver_match.url_name == 'grafana' %}actif{% endif %}">
+        <span class="icone">📊</span> Grafana
+    </a>
+
+    <!-- Statut pipeline en bas de la sidebar
+         mis à jour toutes les 5s par JavaScript -->
+    <div class="sidebar-statut">
+        <span class="point" id="sidebar-point"></span>
+        <span id="sidebar-statut-texte">Vérification...</span>
+    </div>
+</nav>
+
+<!-- ================================================
+     CONTENU — chaque page remplit ce bloc
+================================================ -->
+<main class="main">
+    {% block contenu %}
+    {% endblock %}
+</main>
+
+<script>
+    // ================================================
+    // STATUT PIPELINE DANS LA SIDEBAR
+    // Vérifie toutes les 5 secondes et met à jour
+    // le petit indicateur en bas de la navigation
+    // ================================================
+    function verifierStatut() {
+        fetch('/pipeline/status/')
+            .then(r => r.json())
+            .then(data => {
+                const actif  = data.status === 'running';
+                const point  = document.getElementById('sidebar-point');
+                const texte  = document.getElementById('sidebar-statut-texte');
+                point.className = 'point ' + (actif ? 'actif' : 'inactif');
+                texte.textContent = actif ? 'Pipeline active' : 'Pipeline arrêtée';
+            })
+            .catch(() => {
+                document.getElementById('sidebar-statut-texte').textContent = 'Erreur';
+            });
+    }
+
+    verifierStatut();
+    setInterval(verifierStatut, 5000);
+
+    // ================================================
+    // UTILITAIRE GLOBAL — afficher un message retour
+    // Disponible dans toutes les pages qui héritent
+    // ================================================
+    function afficherMessage(id, texte, succes) {
+        const el = document.getElementById(id);
+        el.textContent = texte;
+        el.className = 'message ' + (succes ? 'succes' : 'erreur');
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 4000);
+    }
+</script>
+
+<!-- Bloc scripts optionnel — chaque page peut ajouter
+     ses propres scripts sans toucher au base.html -->
+{% block scripts %}
+{% endblock %}
+
+</body>
+</html>
