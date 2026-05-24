@@ -42,10 +42,7 @@ json_df.writeStream \
     .start()
 
 # 7. Filtrer les données valides
-filtrees = json_df.filter(
-    ((col("type_capteur") == "temperature") & (col("valeur").between(30, 150))) |
-    ((col("type_capteur") == "vibration") & (col("valeur").between(0, 5)))
-)
+filtrees = json_df.filter(col("valeur") >= 0)
 
 # 8. Fonction batch pour enregistrer les mesures filtrées dans TimescaleDB
 def save_filtrees_to_pg(batch_df, batch_id):

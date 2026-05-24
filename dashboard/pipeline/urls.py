@@ -10,4 +10,8 @@ urlpatterns = [
     path('config/seuils/',      views.config_seuils,    name='config_seuils'),
     path('capteurs/',           views.capteurs,           name='capteurs'),
     path('capteurs/supprimer/', views.supprimer_capteur,  name='supprimer_capteur'),
+    path('alertes/', views.alertes, name='alertes'),
+    path('infrastructure/',         views.infrastructure,       name='infrastructure'),
+    path('infrastructure/data/',    views.infrastructure_data,  name='infrastructure_data'),
+    path('grafana/',                views.grafana,              name='grafana'),
 ]

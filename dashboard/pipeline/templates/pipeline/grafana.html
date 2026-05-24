@@ -1,0 +1,210 @@
+{% extends 'pipeline/base.html' %}
+
+{% block title %}Grafana — Raffinerie IoT{% endblock %}
+
+{% block contenu %}
+
+<style>
+    .grafana-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .btn-grafana {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        background: #f46800;
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.9rem;
+        border-radius: 6px;
+        text-decoration: none;
+        transition: opacity 0.2s;
+    }
+    .btn-grafana:hover { opacity: 0.85; }
+
+    .iframe-wrapper {
+        background: #1a1d2e;
+        border: 1px solid #2a2d3e;
+        border-radius: 10px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .iframe-wrapper iframe {
+        width: 100%;
+        height: 75vh;
+        border: none;
+        display: block;
+    }
+
+    .iframe-fallback {
+        display: none;
+        padding: 60px 30px;
+        text-align: center;
+        color: #a0a0b0;
+    }
+
+    .iframe-fallback .gros-icone { font-size: 3rem; margin-bottom: 15px; }
+    .iframe-fallback h3 { color: #ffffff; margin-bottom: 10px; }
+    .iframe-fallback p  { font-size: 0.9rem; line-height: 1.7; margin-bottom: 20px; }
+    .iframe-fallback code {
+        display: inline-block;
+        background: #0f1117;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        color: #00e676;
+    }
+
+    .panneau-info {
+        background: #1a1d2e;
+        border: 1px solid #2a2d3e;
+        border-radius: 10px;
+        padding: 20px 25px;
+        margin-top: 20px;
+        display: flex;
+        gap: 30px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .panneau-info .item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .panneau-info .item .label {
+        font-size: 0.75rem;
+        color: #a0a0b0;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .panneau-info .item .valeur {
+        font-size: 0.95rem;
+        color: #ffffff;
+        font-weight: 600;
+    }
+
+    .panneau-info .item a {
+        color: #448aff;
+        text-decoration: none;
+    }
+    .panneau-info .item a:hover { text-decoration: underline; }
+</style>
+
+<div class="page-header">
+    <h1>📊 Visualisation Grafana</h1>
+    <p>Aperçu en direct des métriques de la raffinerie</p>
+</div>
+
+<div class="grafana-toolbar">
+
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <label for="selectDashboard" style="margin:0; font-size:0.85rem;">Dashboard :</label>
+        <select id="selectDashboard" style="width:auto; padding:8px 12px;"
+                onchange="changerDashboard(this.value)">
+            <option value="/d/adjk9qc/surveillance-raffienerie?orgId=1&from=now-15m&to=now&timezone=browser&refresh=5s&kiosk=tv"
+                    selected>Surveillance Raffinerie</option>
+            <option value="/?orgId=1&kiosk=tv">Accueil Grafana</option>
+        </select>
+    </div>
+
+    <a href="http://localhost:3000/d/adjk9qc/surveillance-raffienerie?orgId=1&refresh=5s"
+       target="_blank" class="btn-grafana">
+        ↗ Ouvrir dans Grafana
+    </a>
+</div>
+
+<div class="iframe-wrapper" id="iframeWrapper">
+    <iframe id="grafanaFrame"
+            src="http://localhost:3000/d/adjk9qc/surveillance-raffienerie?orgId=1&from=now-15m&to=now&timezone=browser&refresh=5s&kiosk=tv"
+            allowfullscreen
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms">
+    </iframe>
+
+    <div class="iframe-fallback" id="iframeFallback">
+        <div class="gros-icone">🔒</div>
+        <h3>L'aperçu est bloqué par Grafana</h3>
+        <p>
+            Par défaut Grafana interdit l'intégration dans une iframe.<br>
+            Active l'option en exécutant ces deux commandes :
+        </p>
+        <code>docker exec -it raffinerie-iot-grafana-1 bash -c "echo -e '[security]\nallow_embedding = true' >> /etc/grafana/grafana.ini"</code>
+        <br><br>
+        <code>docker compose restart grafana</code>
+        <br><br>
+        <a href="http://localhost:3000/d/adjk9qc/surveillance-raffienerie?orgId=1&refresh=5s"
+           target="_blank" class="btn-grafana" style="margin-top:10px; display:inline-flex;">
+            ↗ Ouvrir Grafana directement
+        </a>
+    </div>
+</div>
+
+<div class="panneau-info">
+    <div class="item">
+        <span class="label">URL Grafana</span>
+        <a class="valeur" href="http://localhost:3000" target="_blank">localhost:3000</a>
+    </div>
+    <div class="item">
+        <span class="label">Dashboard actif</span>
+        <span class="valeur">Surveillance Raffinerie</span>
+    </div>
+    <div class="item">
+        <span class="label">Source de données</span>
+        <span class="valeur">TimescaleDB (PostgreSQL)</span>
+    </div>
+    <div class="item">
+        <span class="label">Fenêtre affichée</span>
+        <span class="valeur">15 dernières minutes</span>
+    </div>
+    <div class="item" style="margin-left:auto;">
+        <a href="http://localhost:3000/datasources" target="_blank"
+           style="color:#a0a0b0; font-size:0.85rem;">⚙ Sources de données</a><br>
+        <a href="http://localhost:3000/dashboards" target="_blank"
+           style="color:#a0a0b0; font-size:0.85rem;">📋 Tous les dashboards</a>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+    const frame    = document.getElementById('grafanaFrame');
+    const fallback = document.getElementById('iframeFallback');
+    let chargé     = false;
+
+    frame.addEventListener('load', () => { chargé = true; });
+
+    setTimeout(() => {
+        if (!chargé) {
+            frame.style.display    = 'none';
+            fallback.style.display = 'block';
+        }
+    }, 5000);
+
+    function changerDashboard(url) {
+        if (!url) return;
+        chargé = false;
+        frame.src              = 'http://localhost:3000' + url;
+        frame.style.display    = 'block';
+        fallback.style.display = 'none';
+
+        setTimeout(() => {
+            if (!chargé) {
+                frame.style.display    = 'none';
+                fallback.style.display = 'block';
+            }
+        }, 5000);
+    }
+</script>
+{% endblock %}

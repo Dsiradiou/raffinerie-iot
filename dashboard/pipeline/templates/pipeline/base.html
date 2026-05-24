@@ -111,6 +111,48 @@
         .point.inactif { background: #ff5252; }
 
         /* ================================================
+           SECTION LIENS EXTERNES
+        ================================================ */
+        .nav-section {
+            padding: 10px 20px 4px 20px;
+            font-size: 0.7rem;
+            color: #555770;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-top: 8px;
+        }
+
+        .nav-link-ext {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 20px;
+            color: #707090;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-link-ext:hover {
+            background: #0f1117;
+            color: #c0c0d0;
+        }
+
+        .nav-link-ext .icone {
+            font-size: 1rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        .nav-link-ext .badge-port {
+            margin-left: auto;
+            font-size: 0.7rem;
+            color: #444460;
+            font-family: monospace;
+        }
+
+        /* ================================================
            CONTENU PRINCIPAL
         ================================================ */
         .main {
@@ -305,6 +347,34 @@
     <a href="/grafana/"
        class="nav-link {% if request.resolver_match.url_name == 'grafana' %}actif{% endif %}">
         <span class="icone">📊</span> Grafana
+    </a>
+
+    <!-- ── Interfaces externes ── -->
+    <div class="nav-section">Interfaces</div>
+
+    <a href="http://localhost:3000" target="_blank" class="nav-link-ext">
+        <span class="icone">📊</span> Grafana
+        <span class="badge-port">:3000</span>
+    </a>
+
+    <a href="http://localhost:9001" target="_blank" class="nav-link-ext">
+        <span class="icone">🗄️</span> MinIO Console
+        <span class="badge-port">:9001</span>
+    </a>
+
+    <a href="http://localhost:8080" target="_blank" class="nav-link-ext">
+        <span class="icone">⚡</span> Spark Master
+        <span class="badge-port">:8080</span>
+    </a>
+
+    <a href="http://localhost:8081" target="_blank" class="nav-link-ext">
+        <span class="icone">⚡</span> Spark Worker 1
+        <span class="badge-port">:8081</span>
+    </a>
+
+    <a href="http://localhost:8082" target="_blank" class="nav-link-ext">
+        <span class="icone">⚡</span> Spark Worker 2
+        <span class="badge-port">:8082</span>
     </a>
 
     <!-- Statut pipeline en bas de la sidebar

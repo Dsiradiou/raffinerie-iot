@@ -1,0 +1,188 @@
+{% extends "pipeline/base.html" %}
+
+{% block title %}Infrastructure — Raffinerie IoT{% endblock %}
+
+{% block contenu %}
+
+<div class="page-header">
+    <h1>🖥️ Infrastructure</h1>
+    <p>Miroir en temps réel de la pipeline —
+       <span id="derniere-maj" style="color:#448aff;">chargement...</span>
+    </p>
+</div>
+
+<!-- ================================================
+     CONTENEURS DOCKER
+================================================ -->
+<div class="card">
+    <h2>Conteneurs Docker</h2>
+    <div id="grille-conteneurs"
+         style="display:grid;
+                grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
+                gap:15px;">
+        <!-- Rempli par JavaScript -->
+        <div style="color:#a0a0b0; text-align:center; padding:20px;">
+            Chargement...
+        </div>
+    </div>
+</div>
+
+<!-- ================================================
+     PIPELINE DE DONNÉES
+================================================ -->
+<div class="card">
+    <h2>Pipeline de données</h2>
+    <div style="display:grid;
+                grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
+                gap:15px;"
+         id="grille-pipeline">
+        <!-- Rempli par JavaScript -->
+    </div>
+</div>
+
+<!-- ================================================
+     MÉTRIQUES
+================================================ -->
+<div class="card">
+    <h2>Métriques</h2>
+    <div style="display:grid;
+                grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+                gap:15px;"
+         id="grille-metriques">
+        <!-- Rempli par JavaScript -->
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+    // ================================================
+    // GÉNÈRE UN BLOC VISUEL POUR UN CONTENEUR
+    // ================================================
+    function bloqConteneur(nom, statut, uptime) {
+        const actif    = statut === 'running';
+        const couleur  = actif  ? '#00e676' : statut === 'absent' ? '#a0a0b0' : '#ff5252';
+        const icone    = actif  ? '✅' : statut === 'absent' ? '⚪' : '❌';
+        const libelle  = actif  ? 'Actif' : statut === 'absent' ? 'Absent' : 'Arrêté';
+
+        return `
+            <div style="background:#0f1117; border-radius:8px; padding:15px;
+                        border:1px solid ${couleur}33; text-align:center;">
+                <div style="font-size:1.5rem; margin-bottom:8px;">${icone}</div>
+                <div style="font-weight:700; color:#ffffff; margin-bottom:4px;">${nom}</div>
+                <div style="font-size:0.8rem; color:${couleur}; font-weight:600;">
+                    ${libelle}
+                </div>
+                ${uptime ? `<div style="font-size:0.7rem; color:#a0a0b0; margin-top:4px;">
+                    Depuis : ${uptime}</div>` : ''}
+            </div>`;
+    }
+
+    // ================================================
+    // GÉNÈRE UN BLOC POUR UN PROCESSUS PYTHON
+    // ================================================
+    function blocProcessus(nom, actif) {
+        const couleur = actif ? '#00e676' : '#ff5252';
+        const icone   = actif ? '✅' : '❌';
+        const libelle = actif ? 'En cours' : 'Arrêté';
+
+        return `
+            <div style="background:#0f1117; border-radius:8px; padding:15px;
+                        border:1px solid ${couleur}33; text-align:center;">
+                <div style="font-size:1.5rem; margin-bottom:8px;">${icone}</div>
+                <div style="font-weight:700; color:#ffffff; margin-bottom:4px;">${nom}</div>
+                <div style="font-size:0.8rem; color:${couleur}; font-weight:600;">
+                    ${libelle}
+                </div>
+            </div>`;
+    }
+
+    // ================================================
+    // GÉNÈRE UN BLOC MÉTRIQUE
+    // ================================================
+    function blocMetrique(label, valeur, couleur) {
+        return `
+            <div style="background:#0f1117; border-radius:8px; padding:15px;
+                        border:1px solid #2a2d3e; text-align:center;">
+                <div style="font-size:1.8rem; font-weight:700;
+                            color:${couleur || '#448aff'}; margin-bottom:5px;">
+                    ${valeur}
+                </div>
+                <div style="font-size:0.8rem; color:#a0a0b0;">${label}</div>
+            </div>`;
+    }
+
+    // ================================================
+    // APPEL PRINCIPAL — récupère et affiche les données
+    // ================================================
+    function rafraichir() {
+        fetch('/infrastructure/data/')
+            .then(r => r.json())
+            .then(data => {
+                const now = new Date().toLocaleTimeString();
+                document.getElementById('derniere-maj').textContent =
+                    `Dernière mise à jour : ${now}`;
+
+                // --- Conteneurs Docker ---
+                const gc = document.getElementById('grille-conteneurs');
+                gc.innerHTML = data.conteneurs.map(c =>
+                    bloqConteneur(c.nom, c.statut, c.uptime)
+                ).join('');
+
+                // --- Pipeline Python ---
+                const gp = document.getElementById('grille-pipeline');
+                gp.innerHTML =
+                    blocProcessus('Simulateur capteurs', data.pipeline.simulateur) +
+                    blocProcessus('Pont MQTT → Kafka',   data.pipeline.mqtt_kafka) +
+                    blocProcessus('Spark Streaming',
+                        data.conteneurs.find(c => c.nom === 'Spark Master')?.statut === 'running'
+                    );
+
+                // --- Métriques ---
+                const gm = document.getElementById('grille-metriques');
+                const m  = data.metriques;
+                let html = '';
+
+                html += blocMetrique(
+                    'Messages Kafka',
+                    m.kafka_messages ?? 'N/A',
+                    '#ffab40'
+                );
+                html += blocMetrique(
+                    'Mesures filtrées (DB)',
+                    m.mesures_filtrees?.toLocaleString() ?? 'N/A',
+                    '#00e676'
+                );
+                html += blocMetrique(
+                    'KPI calculés (DB)',
+                    m.kpi_indicateurs?.toLocaleString() ?? 'N/A',
+                    '#448aff'
+                );
+
+                // Une métrique par type de capteur
+                if (m.par_type) {
+                    Object.entries(m.par_type).forEach(([type, count]) => {
+                        html += blocMetrique(
+                            `Mesures ${type}`,
+                            count.toLocaleString(),
+                            '#a0a0b0'
+                        );
+                    });
+                }
+
+                gm.innerHTML = html;
+            })
+            .catch(() => {
+                document.getElementById('derniere-maj').textContent =
+                    'Erreur de connexion';
+            });
+    }
+
+    // Lancer au chargement puis toutes les 10 secondes
+    rafraichir();
+    setInterval(rafraichir, 10000);
+
+</script>
+{% endblock %}

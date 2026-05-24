@@ -1,0 +1,149 @@
+{% extends "pipeline/base.html" %}
+
+{% block title %}Alertes — Raffinerie IoT{% endblock %}
+
+{% block contenu %}
+
+<div class="page-header">
+    <h1>🚨 Alertes</h1>
+    <p>Mesures ayant dépassé les seuils définis — rafraîchissement automatique toutes les 30s</p>
+</div>
+
+<!-- Résumé en chiffres -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+            gap:15px; margin-bottom:25px;">
+
+    <div class="card" style="text-align:center; padding:20px;">
+        <div style="font-size:2rem; font-weight:700; color:#ff5252;">
+            {{ total }}
+        </div>
+        <div style="color:#a0a0b0; font-size:0.85rem; margin-top:5px;">
+            Alertes détectées
+        </div>
+    </div>
+
+    <!-- Compte les alertes HAUT -->
+    <div class="card" style="text-align:center; padding:20px;">
+        <div style="font-size:2rem; font-weight:700; color:#ffab40;">
+            {% with haut=0 %}
+                {{ alertes|length }}
+            {% endwith %}
+            <!-- Compté côté JS -->
+            <span id="count-haut">—</span>
+        </div>
+        <div style="color:#a0a0b0; font-size:0.85rem; margin-top:5px;">
+            Seuil haut dépassé
+        </div>
+    </div>
+
+    <div class="card" style="text-align:center; padding:20px;">
+        <div style="font-size:2rem; font-weight:700; color:#448aff;">
+            <span id="count-bas">—</span>
+        </div>
+        <div style="color:#a0a0b0; font-size:0.85rem; margin-top:5px;">
+            Seuil bas dépassé
+        </div>
+    </div>
+
+</div>
+
+<!-- Tableau des alertes -->
+<div class="card">
+    <h2>
+        Historique des alertes
+        <span style="float:right; font-size:0.8rem; color:#448aff;"
+              id="countdown">
+            Prochain rafraîchissement dans 30s
+        </span>
+    </h2>
+
+    {% if alertes %}
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Machine</th>
+                <th>Type</th>
+                <th>Valeur</th>
+                <th>Seuil</th>
+                <th>Niveau</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for alerte in alertes %}
+            <tr>
+                <td style="color:#a0a0b0; font-size:0.85rem;">
+                    {{ alerte.timestamp }}
+                </td>
+                <td style="font-weight:600;">
+                    {{ alerte.machine_id }}
+                </td>
+                <td>{{ alerte.type_capteur }}</td>
+                <td style="font-weight:700;
+                    color:{% if alerte.niveau == 'HAUT' %}#ff5252{% else %}#448aff{% endif %};">
+                    {{ alerte.valeur }} {{ alerte.unite }}
+                </td>
+                <td style="color:#a0a0b0;">
+                    {% if alerte.niveau == 'HAUT' %}
+                        &gt; {{ alerte.seuil }} {{ alerte.unite }}
+                    {% else %}
+                        &lt; {{ alerte.seuil }} {{ alerte.unite }}
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="badge
+                        {% if alerte.niveau == 'HAUT' %}badge-erreur{% else %}badge-alerte{% endif %}">
+                        {{ alerte.niveau }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% else %}
+    <div style="text-align:center; padding:40px; color:#a0a0b0;">
+        ✅ Aucune alerte détectée — tous les capteurs sont dans les seuils
+    </div>
+    {% endif %}
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+    // ================================================
+    // COMPTAGE HAUT / BAS au chargement
+    // Parcourt le tableau et compte les badges
+    // ================================================
+    document.addEventListener('DOMContentLoaded', () => {
+        const badges = document.querySelectorAll('.badge');
+        let haut = 0, bas = 0;
+        badges.forEach(b => {
+            if (b.textContent.trim() === 'HAUT') haut++;
+            else bas++;
+        });
+        document.getElementById('count-haut').textContent = haut;
+        document.getElementById('count-bas').textContent  = bas;
+    });
+
+    // ================================================
+    // COUNTDOWN + RAFRAÎCHISSEMENT AUTO toutes les 30s
+    // Évite de recharger manuellement la page
+    // ================================================
+    let secondes = 30;
+
+    setInterval(() => {
+        secondes--;
+        document.getElementById('countdown').textContent =
+            `Prochain rafraîchissement dans ${secondes}s`;
+
+        if (secondes <= 0) {
+            location.reload();
+        }
+    }, 1000);
+
+</script>
+{% endblock %}

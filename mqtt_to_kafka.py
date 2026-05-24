@@ -31,5 +31,6 @@ client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.connect("localhost", 1883)
 client.subscribe("raffinerie/temp")
 client.subscribe("raffinerie/vib")
+client.subscribe("raffinerie/pression")
 client.on_message = on_message
 client.loop_forever()
