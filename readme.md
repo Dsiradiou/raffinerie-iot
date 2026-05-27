@@ -6,5 +6,5 @@ docker exec -it raffinerie-iot-grafana-1 bash -c \
    echo 'allow_embedding = true' >> /etc/grafana/grafana.ini"
 docker compose restart grafana
 au cas ou grafana bloc le iframe
-docker exec -it raffinerie-iot-grafana-1 bash -c "echo -e '[security]\nallow_embedding = true' >> /etc/grafana/grafana.ini"
+docker exec -it raffinerie-iot-grafana-1 bash -c "echo -e '[security]\nallow_embedding = true' >> /etc  grafana/grafana.ini"
 docker compose restart grafana

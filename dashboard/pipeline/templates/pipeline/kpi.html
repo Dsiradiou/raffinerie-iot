@@ -1,0 +1,194 @@
+{% extends 'pipeline/base.html' %}
+
+{% block title %}KPI — Raffinerie IoT{% endblock %}
+
+{% block contenu %}
+
+<style>
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .kpi-card {
+        background: #1a1d2e;
+        border: 1px solid #2a2d3e;
+        border-radius: 10px;
+        padding: 25px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .kpi-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+    }
+
+    .kpi-card.temperature::before { background: #ff7043; }
+    .kpi-card.vibration::before   { background: #448aff; }
+    .kpi-card.pression::before    { background: #00e676; }
+    .kpi-card.default::before     { background: #ab47bc; }
+
+    .kpi-type {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: #a0a0b0;
+        margin-bottom: 12px;
+    }
+
+    .kpi-valeur {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #ffffff;
+        line-height: 1;
+    }
+
+    .kpi-unite {
+        font-size: 0.9rem;
+        color: #a0a0b0;
+        margin-top: 6px;
+    }
+
+    .kpi-timestamp {
+        font-size: 0.72rem;
+        color: #555770;
+        margin-top: 12px;
+    }
+
+    .icone-kpi {
+        font-size: 1.8rem;
+        margin-bottom: 10px;
+        display: block;
+    }
+
+    .refresh-info {
+        font-size: 0.8rem;
+        color: #555770;
+        margin-bottom: 20px;
+    }
+
+    .vide {
+        padding: 40px;
+        text-align: center;
+        color: #555770;
+        font-size: 0.9rem;
+    }
+</style>
+
+<div class="page-header">
+    <h1>📈 Indicateurs de performance (KPI)</h1>
+    <p>Moyennes glissantes sur 1 minute calculées par Spark</p>
+</div>
+
+<div class="refresh-info" id="refresh-info">
+    Rafraîchissement automatique dans <span id="compte-rebours">30</span>s
+</div>
+
+<!-- ── Cartes résumé ── -->
+{% if resume %}
+<div class="kpi-grid">
+    {% for type_kpi, data in resume.items %}
+
+    {% if type_kpi == 'temperature' %}
+        {% with icone="🌡️" classe="temperature" %}
+        <div class="kpi-card {{ classe }}">
+            <span class="icone-kpi">{{ icone }}</span>
+            <div class="kpi-type">{{ type_kpi }}</div>
+            <div class="kpi-valeur">{{ data.valeur }}</div>
+            <div class="kpi-unite">{{ data.unite }}</div>
+            <div class="kpi-timestamp">Dernière mise à jour : {{ data.timestamp }}</div>
+        </div>
+        {% endwith %}
+    {% elif type_kpi == 'vibration' %}
+        {% with icone="📳" classe="vibration" %}
+        <div class="kpi-card {{ classe }}">
+            <span class="icone-kpi">{{ icone }}</span>
+            <div class="kpi-type">{{ type_kpi }}</div>
+            <div class="kpi-valeur">{{ data.valeur }}</div>
+            <div class="kpi-unite">{{ data.unite }}</div>
+            <div class="kpi-timestamp">Dernière mise à jour : {{ data.timestamp }}</div>
+        </div>
+        {% endwith %}
+    {% elif type_kpi == 'pression' %}
+        {% with icone="🔵" classe="pression" %}
+        <div class="kpi-card {{ classe }}">
+            <span class="icone-kpi">{{ icone }}</span>
+            <div class="kpi-type">{{ type_kpi }}</div>
+            <div class="kpi-valeur">{{ data.valeur }}</div>
+            <div class="kpi-unite">{{ data.unite }}</div>
+            <div class="kpi-timestamp">Dernière mise à jour : {{ data.timestamp }}</div>
+        </div>
+        {% endwith %}
+    {% else %}
+        <div class="kpi-card default">
+            <span class="icone-kpi">📊</span>
+            <div class="kpi-type">{{ type_kpi }}</div>
+            <div class="kpi-valeur">{{ data.valeur }}</div>
+            <div class="kpi-unite">{{ data.unite }}</div>
+            <div class="kpi-timestamp">Dernière mise à jour : {{ data.timestamp }}</div>
+        </div>
+    {% endif %}
+
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="vide">
+        Aucun KPI disponible. Assurez-vous que la pipeline et le job Spark sont actifs.
+    </div>
+</div>
+{% endif %}
+
+<!-- ── Tableau historique ── -->
+<div class="card">
+    <h2>Historique des 50 derniers KPI</h2>
+
+    {% if historique %}
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Type</th>
+                <th>Valeur</th>
+                <th>Unité</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in historique %}
+            <tr>
+                <td>{{ ligne.timestamp }}</td>
+                <td>{{ ligne.type_kpi }}</td>
+                <td><strong>{{ ligne.valeur }}</strong></td>
+                <td>{{ ligne.unite }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="vide">Aucune donnée dans kpi_indicateurs.</div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+    // Compte à rebours + rafraîchissement automatique toutes les 30s
+    let secondes = 30;
+
+    setInterval(() => {
+        secondes--;
+        document.getElementById('compte-rebours').textContent = secondes;
+        if (secondes <= 0) {
+            window.location.reload();
+        }
+    }, 1000);
+</script>
+{% endblock %}

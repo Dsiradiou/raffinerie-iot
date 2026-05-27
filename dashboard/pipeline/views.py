@@ -1,107 +1,169 @@
 import json
 import subprocess
 import os
+import time
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 import psycopg2
 import docker
+import psutil
 
-# Stocke les références aux processus lancés
+# Stocke les references aux processus lances par Django
 processus = {
-    "simulateur" : None,
-    "mqtt_kafka" : None,
+    "simulateur": None,
+    "mqtt_kafka": None,
 }
 
 # Chemin racine du projet raffinerie-iot
 RACINE = os.path.dirname(settings.CONFIG_PATH)
 
+SCRIPTS = {
+    "simulateur": "simulateur_capteurs.py",
+    "mqtt_kafka": "mqtt_to_kafka.py",
+}
+
+
 def lire_config():
-    """Lit et retourne le contenu de config.json."""
     with open(settings.CONFIG_PATH, 'r') as f:
         return json.load(f)
 
+
 def ecrire_config(data):
-    """Écrit les données dans config.json."""
     with open(settings.CONFIG_PATH, 'w') as f:
         json.dump(data, f, indent=4)
 
+
+def trouver_processus():
+    """Cherche les scripts dans tous les processus OS via psutil."""
+    trouve = {"simulateur": False, "mqtt_kafka": False}
+    for proc in psutil.process_iter(['cmdline']):
+        try:
+            cmdline = " ".join(proc.info['cmdline'] or [])
+            for cle, nom in SCRIPTS.items():
+                if nom in cmdline:
+                    trouve[cle] = True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    return trouve
+
+
 def pipeline_active():
-    """Vérifie si les processus tournent encore."""
-    sim  = processus["simulateur"]
-    mqtt = processus["mqtt_kafka"]
-    return sim is not None and sim.poll() is None and \
-           mqtt is not None and mqtt.poll() is None
+    """Retourne True si les deux scripts tournent."""
+    t = trouver_processus()
+    return t["simulateur"] and t["mqtt_kafka"]
+
 
 # ============================================================
 # VUE PRINCIPALE
 # ============================================================
 
 def index(request):
-    """Page principale du dashboard."""
     config = lire_config()
     return render(request, 'pipeline/index.html', {
-        'config'  : config,
-        'actif'   : pipeline_active(),
+        'config': config,
+        'actif': pipeline_active(),
     })
 
+
 # ============================================================
-# CONTRÔLE DE LA PIPELINE
+# CONTROLE DE LA PIPELINE
 # ============================================================
 
 @csrf_exempt
 def pipeline_start(request):
-    """Lance le simulateur et le pont MQTT→Kafka."""
     if request.method == 'POST':
         if pipeline_active():
-            return JsonResponse({'status': 'error', 'message': 'Pipeline déjà active'})
+            return JsonResponse({'status': 'error', 'message': 'Pipeline deja active'})
 
         try:
             venv_python = os.path.join(RACINE, 'venv', 'Scripts', 'python.exe')
 
+            if not os.path.exists(venv_python):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Interpreteur introuvable : ' + venv_python
+                })
+
             processus["simulateur"] = subprocess.Popen(
                 [venv_python, os.path.join(RACINE, 'simulateur_capteurs.py')],
-                cwd=RACINE
+                cwd=RACINE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
             )
             processus["mqtt_kafka"] = subprocess.Popen(
                 [venv_python, os.path.join(RACINE, 'mqtt_to_kafka.py')],
-                cwd=RACINE
+                cwd=RACINE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
             )
+
+            # Attend 2s puis verifie que les processus tournent vraiment
+            time.sleep(2)
+
+            sim_ok = processus["simulateur"].poll() is None
+            mqtt_ok = processus["mqtt_kafka"].poll() is None
+
+            if not sim_ok or not mqtt_ok:
+                erreur = ""
+                if not sim_ok:
+                    erreur += processus["simulateur"].stderr.read().decode(errors='replace')
+                if not mqtt_ok:
+                    erreur += processus["mqtt_kafka"].stderr.read().decode(errors='replace')
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Echec au demarrage : ' + erreur[:300]
+                })
 
             config = lire_config()
             config["pipeline"]["status"] = "running"
             ecrire_config(config)
 
-            return JsonResponse({'status': 'ok', 'message': 'Pipeline démarrée'})
+            return JsonResponse({'status': 'ok', 'message': 'Pipeline demarree'})
 
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)})
 
+
 @csrf_exempt
 def pipeline_stop(request):
-    """Arrête le simulateur et le pont MQTT→Kafka."""
     if request.method == 'POST':
         try:
-            for nom, proc in processus.items():
-                if proc and proc.poll() is None:
-                    proc.terminate()
-                    processus[nom] = None
+            # Tue tous les processus correspondants via psutil
+            # (peu importe s'ils ont ete lances par Django ou le terminal)
+            for proc in psutil.process_iter(['pid', 'cmdline']):
+                try:
+                    cmdline = " ".join(proc.info['cmdline'] or [])
+                    for nom in SCRIPTS.values():
+                        if nom in cmdline:
+                            proc.terminate()
+                            break
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+            # Reinitialise le dict interne
+            processus["simulateur"] = None
+            processus["mqtt_kafka"] = None
 
             config = lire_config()
             config["pipeline"]["status"] = "stopped"
             ecrire_config(config)
 
-            return JsonResponse({'status': 'ok', 'message': 'Pipeline arrêtée'})
+            return JsonResponse({'status': 'ok', 'message': 'Pipeline arretee'})
 
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)})
 
+
 def pipeline_status(request):
-    """Retourne l'état actuel de la pipeline."""
+    t = trouver_processus()
     return JsonResponse({
-        'status' : 'running' if pipeline_active() else 'stopped'
+        'status': 'running' if (t["simulateur"] and t["mqtt_kafka"]) else 'stopped',
+        'simulateur': t["simulateur"],
+        'mqtt_kafka': t["mqtt_kafka"],
     })
+
 
 # ============================================================
 # CONFIGURATION
@@ -109,19 +171,16 @@ def pipeline_status(request):
 
 @csrf_exempt
 def config_capteurs(request):
-    """Met à jour la liste des capteurs dans config.json."""
     if request.method == 'POST':
         try:
-            data   = json.loads(request.body)
+            data = json.loads(request.body)
             config = lire_config()
             action = data.get('action', 'remplacer')
 
             if action == 'ajouter':
-                # Vérifie que le machine_id n'existe pas déjà
                 ids_existants = [c["machine_id"] for c in config["capteurs"]]
                 if data["capteur"]["machine_id"] in ids_existants:
-                    return JsonResponse({'status': 'error',
-                                        'message': 'Ce machine_id existe déjà'})
+                    return JsonResponse({'status': 'error', 'message': 'Ce machine_id existe deja'})
                 config["capteurs"].append(data["capteur"])
 
             elif action == 'modifier':
@@ -130,154 +189,208 @@ def config_capteurs(request):
                         c.update(data["capteur"])
                         break
 
-            else:  # remplacer — comportement original
+            else:
                 config["capteurs"] = data["capteurs"]
 
             ecrire_config(config)
-            return JsonResponse({'status': 'ok', 'message': 'Capteurs mis à jour'})
+            return JsonResponse({'status': 'ok', 'message': 'Capteurs mis a jour'})
 
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)})
+
 
 @csrf_exempt
 def config_seuils(request):
-    """Met à jour les seuils d'alerte dans config.json."""
     if request.method == 'POST':
         try:
-            data   = json.loads(request.body)
+            data = json.loads(request.body)
             config = lire_config()
             config["seuils"].update(data)
             ecrire_config(config)
-            return JsonResponse({'status': 'ok', 'message': 'Seuils mis à jour'})
+            return JsonResponse({'status': 'ok', 'message': 'Seuils mis a jour'})
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)})
 
+
 def capteurs(request):
-    """Page de gestion des capteurs."""
     config = lire_config()
     return render(request, 'pipeline/capteurs.html', {
         'capteurs': config["capteurs"]
     })
 
+
 @csrf_exempt
 def supprimer_capteur(request):
-    """Supprime un capteur par son machine_id."""
     if request.method == 'POST':
         try:
-            data       = json.loads(request.body)
+            data = json.loads(request.body)
             machine_id = data["machine_id"]
-            config     = lire_config()
+            config = lire_config()
             config["capteurs"] = [
                 c for c in config["capteurs"]
                 if c["machine_id"] != machine_id
             ]
             ecrire_config(config)
-            return JsonResponse({'status': 'ok', 'message': f'{machine_id} supprimé'})
+            return JsonResponse({'status': 'ok', 'message': machine_id + ' supprime'})
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)})
-        
+
+
+# ============================================================
+# ALERTES
+# ============================================================
 
 def alertes(request):
-    """
-    Récupère les mesures hors seuils depuis TimescaleDB
-    et les affiche sous forme de tableau.
-    """
-    config   = lire_config()
-    capteurs = config["capteurs"]
-    alertes  = []
+    config = lire_config()
+    liste_capteurs = config["capteurs"]
+    liste_alertes = []
 
     try:
-        # Connexion à TimescaleDB
         conn = psycopg2.connect(
-            host     = "localhost",
-            port     = 5432,
-            dbname   = "iotdb",
-            user     = "admin",
-            password = "admin"
+            host="localhost", port=5432,
+            dbname="iotdb", user="admin", password="admin"
         )
         cursor = conn.cursor()
 
-        # Pour chaque capteur on cherche les valeurs hors seuils
-        for capteur in capteurs:
-            machine_id  = capteur["machine_id"]
-            type_capteur= capteur["type_capteur"]
-            seuil_bas   = capteur["seuil_alerte_bas"]
-            seuil_haut  = capteur["seuil_alerte_haut"]
-            unite       = capteur["unite"]
+        for capteur in liste_capteurs:
+            machine_id = capteur["machine_id"]
+            type_capteur = capteur["type_capteur"]
+            seuil_bas = capteur["seuil_alerte_bas"]
+            seuil_haut = capteur["seuil_alerte_haut"]
+            unite = capteur["unite"]
 
             cursor.execute("""
                 SELECT timestamp, machine_id, type_capteur, valeur
                 FROM mesures_filtrees
-                WHERE machine_id    = %s
-                AND   type_capteur  = %s
+                WHERE machine_id   = %s
+                AND   type_capteur = %s
                 AND   (valeur < %s OR valeur > %s)
                 ORDER BY timestamp DESC
                 LIMIT 50
             """, (machine_id, type_capteur, seuil_bas, seuil_haut))
 
-            rows = cursor.fetchall()
-
-            for row in rows:
+            for row in cursor.fetchall():
                 timestamp, mid, type_cap, valeur = row
-
-                # Détermine si c'est une alerte haute ou basse
                 if valeur > seuil_haut:
-                    niveau  = "HAUT"
-                    seuil   = seuil_haut
+                    niveau = "HAUT"
+                    seuil = seuil_haut
                 else:
-                    niveau  = "BAS"
-                    seuil   = seuil_bas
+                    niveau = "BAS"
+                    seuil = seuil_bas
 
-                alertes.append({
-                    "timestamp"   : timestamp,
-                    "machine_id"  : mid,
+                liste_alertes.append({
+                    "timestamp": timestamp,
+                    "machine_id": mid,
                     "type_capteur": type_cap,
-                    "valeur"      : round(valeur, 2),
-                    "seuil"       : seuil,
-                    "niveau"      : niveau,
-                    "unite"       : unite,
+                    "valeur": round(valeur, 2),
+                    "seuil": seuil,
+                    "niveau": niveau,
+                    "unite": unite,
                 })
 
         cursor.close()
         conn.close()
 
-        # Trier toutes les alertes par timestamp décroissant
-        alertes.sort(key=lambda x: x["timestamp"], reverse=True)
-        alertes = alertes[:100]  # garder les 100 plus récentes
+        liste_alertes.sort(key=lambda x: x["timestamp"], reverse=True)
+        liste_alertes = liste_alertes[:100]
 
     except Exception as e:
-        print(f"Erreur DB alertes : {e}")
+        print("Erreur DB alertes : " + str(e))
 
     return render(request, 'pipeline/alertes.html', {
-        'alertes' : alertes,
-        'total'   : len(alertes),
+        'alertes': liste_alertes,
+        'total': len(liste_alertes),
     })
 
+
+# ============================================================
+# KPI
+# ============================================================
+
+def kpi(request):
+    """
+    Affiche les indicateurs de performance depuis kpi_indicateurs.
+    - resume : derniere valeur moyenne par type (pour les cartes)
+    - historique : les 50 derniers enregistrements (pour le tableau)
+    """
+    resume = {}
+    historique = []
+
+    try:
+        conn = psycopg2.connect(
+            host="localhost", port=5432,
+            dbname="iotdb", user="admin", password="admin"
+        )
+        cursor = conn.cursor()
+
+        # Derniere valeur par type de capteur pour les cartes resumé
+        cursor.execute("""
+            SELECT DISTINCT ON (type_kpi)
+                type_kpi, valeur, unite, timestamp
+            FROM kpi_indicateurs
+            ORDER BY type_kpi, timestamp DESC
+        """)
+        for row in cursor.fetchall():
+            type_kpi, valeur, unite, timestamp = row
+            resume[type_kpi] = {
+                "valeur"   : round(valeur, 3),
+                "unite"    : unite,
+                "timestamp": timestamp,
+            }
+
+        # 50 derniers enregistrements pour le tableau
+        cursor.execute("""
+            SELECT timestamp, type_kpi, valeur, unite
+            FROM kpi_indicateurs
+            ORDER BY timestamp DESC
+            LIMIT 50
+        """)
+        for row in cursor.fetchall():
+            timestamp, type_kpi, valeur, unite = row
+            historique.append({
+                "timestamp": timestamp,
+                "type_kpi" : type_kpi,
+                "valeur"   : round(valeur, 3),
+                "unite"    : unite,
+            })
+
+        cursor.close()
+        conn.close()
+
+    except Exception as e:
+        print("Erreur DB kpi : " + str(e))
+
+    return render(request, 'pipeline/kpi.html', {
+        'resume'    : resume,
+        'historique': historique,
+    })
+
+
+# ============================================================
+# INFRASTRUCTURE
+# ============================================================
+
 def infrastructure(request):
-    """Page miroir de la pipeline."""
     return render(request, 'pipeline/infrastructure.html')
 
+
 def grafana(request):
-    """Page Grafana — iframe + lien direct."""
     return render(request, 'pipeline/grafana.html')
 
 
 def infrastructure_data(request):
-    """
-    Endpoint JSON appelé toutes les 10s par le JavaScript.
-    Retourne l'état de tous les conteneurs et métriques.
-    """
     data = {
-        "conteneurs" : [],
-        "pipeline"   : {},
-        "metriques"  : {},
+        "conteneurs": [],
+        "pipeline": {},
+        "metriques": {},
     }
+
+    docker_client = None
 
     # --- Statut des conteneurs Docker ---
     try:
         docker_client = docker.from_env()
 
-        # Liste des conteneurs attendus avec leur nom affiché
         conteneurs_attendus = [
             {"nom_affiche": "MQTT",           "nom_conteneur": "raffinerie-iot-mqtt-1"},
             {"nom_affiche": "Kafka",          "nom_conteneur": "kafka"},
@@ -294,31 +407,26 @@ def infrastructure_data(request):
             try:
                 conteneur = docker_client.containers.get(item["nom_conteneur"])
                 data["conteneurs"].append({
-                    "nom"    : item["nom_affiche"],
-                    "statut" : conteneur.status,  # running, exited, paused...
+                    "nom": item["nom_affiche"],
+                    "statut": conteneur.status,
                     "details": conteneur.attrs["State"]["Status"],
-                    "uptime" : conteneur.attrs["State"].get("StartedAt", "")[:19].replace("T", " "),
+                    "uptime": conteneur.attrs["State"].get("StartedAt", "")[:19].replace("T", " "),
                 })
             except docker.errors.NotFound:
                 data["conteneurs"].append({
-                    "nom"    : item["nom_affiche"],
-                    "statut" : "absent",
+                    "nom": item["nom_affiche"],
+                    "statut": "absent",
                     "details": "Conteneur introuvable",
-                    "uptime" : "",
+                    "uptime": "",
                 })
 
     except Exception as e:
         data["erreur_docker"] = str(e)
 
-    # --- Statut des processus Python ---
-    data["pipeline"] = {
-        "simulateur": processus["simulateur"] is not None and
-                      processus["simulateur"].poll() is None,
-        "mqtt_kafka": processus["mqtt_kafka"] is not None and
-                      processus["mqtt_kafka"].poll() is None,
-    }
+    # --- Statut des processus Python via psutil ---
+    data["pipeline"] = trouver_processus()
 
-    # --- Métriques TimescaleDB ---
+    # --- Metriques TimescaleDB ---
     try:
         conn = psycopg2.connect(
             host="localhost", port=5432,
@@ -347,17 +455,18 @@ def infrastructure_data(request):
     except Exception as e:
         data["metriques"]["erreur"] = str(e)
 
-    # --- Métriques Kafka ---
+    # --- Metriques Kafka ---
     try:
-        admin = docker_client.containers.get("kafka")
-        result = admin.exec_run(
-            "/usr/bin/kafka-run-class kafka.tools.GetOffsetShell "
-            "--broker-list localhost:9092 --topic sensor-data --time -1"
-        )
-        output = result.output.decode().strip()
-        if ":" in output:
-            offset = int(output.split(":")[-1])
-            data["metriques"]["kafka_messages"] = offset
+        if docker_client:
+            kafka = docker_client.containers.get("kafka")
+            result = kafka.exec_run(
+                "/usr/bin/kafka-run-class kafka.tools.GetOffsetShell "
+                "--broker-list localhost:9092 --topic sensor-data --time -1"
+            )
+            output = result.output.decode().strip()
+            if ":" in output:
+                offset = int(output.split(":")[-1])
+                data["metriques"]["kafka_messages"] = offset
     except Exception:
         data["metriques"]["kafka_messages"] = "N/A"
 

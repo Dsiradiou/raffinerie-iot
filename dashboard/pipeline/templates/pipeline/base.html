@@ -344,6 +344,11 @@
         <span class="icone">🖥️</span> Infrastructure
     </a>
 
+    <a href="/kpi/"
+       class="nav-link {% if request.resolver_match.url_name == 'kpi' %}actif{% endif %}">
+        <span class="icone">📈</span> KPI
+    </a>
+
     <a href="/grafana/"
        class="nav-link {% if request.resolver_match.url_name == 'grafana' %}actif{% endif %}">
         <span class="icone">📊</span> Grafana
